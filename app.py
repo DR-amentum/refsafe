@@ -135,13 +135,21 @@ def get_reference_excerpt(path):
 
 def verify_with_llm(claim, reference):
     prompt = f"""
+You are verifying if a specific claim is supported by a given reference.
+
+**Definitions**:
+- "Supported": The reference explicitly supports the claim.
+- "Not Supported": The reference is neutral or unrelated to the claim.
+- "Contradicted": The reference implies the claim is false or misleading.
+- "Not Found": The claim or topic is not addressed at all.
+
+Now assess:
+
 Claim:
 {claim}
 
 Reference:
 {reference}
-
-Does the reference support the claim?
 
 Respond with one of:
 Supported / Not Supported / Contradicted / Not Found
