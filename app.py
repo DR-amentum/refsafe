@@ -11,11 +11,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 REFERENCE_FOLDER = "references"
 INDEX_FILE = "embeddings.json"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-LLM_MODEL = "mistral"  # or any model listed at https://openrouter.ai/docs#models
+LLM_MODEL = "mistralai/devstral-small:free"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_KEY = st.secrets["api"]["openrouter_key"]
 
-# Load local embedding model once
+# --- Load Embedder ---
 @st.cache_resource
 def load_embedder():
     return SentenceTransformer(EMBEDDING_MODEL)
@@ -25,16 +25,19 @@ embedder = load_embedder()
 # --- Streamlit Navigation ---
 page = st.sidebar.radio("📂 Navigate", ["🔍 Reference Checker", "⚙️ Manage References"])
 
-# --- Embedding locally ---
+# --- Local Embedding ---
 def embed_locally(text):
     return embedder.encode([text])[0]
 
-# --- OpenRouter LLM Inference ---
+# --- OpenRouter Devstral LLM ---
 def call_openrouter(prompt):
     headers = {"Authorization": f"Bearer {API_KEY}"}
     payload = {
         "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}]
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant that extracts structured citations and verifies textual claims against reference documents."},
+            {"role": "user", "content": prompt}
+        ]
     }
     response = requests.post(OPENROUTER_URL, headers=headers, json=payload)
 
@@ -49,11 +52,11 @@ def call_openrouter(prompt):
     st.code(content)
     return content
 
-# --- Similarity ---
+# --- Cosine Similarity ---
 def cosine_sim(v1, v2):
     return cosine_similarity([v1], [v2])[0][0]
 
-# --- Match Reference via Embedding ---
+# --- Match Reference ---
 def match_reference_embedding(query, index, threshold=0.6):
     if not index:
         st.error("❌ No embedding index found.")
@@ -70,7 +73,7 @@ def match_reference_embedding(query, index, threshold=0.6):
 
     return (best["file"], best_score) if best_score > threshold else (None, best_score)
 
-# --- Load/Save Embeddings ---
+# --- Load/Save Index ---
 def load_index():
     if os.path.exists(INDEX_FILE):
         with open(INDEX_FILE) as f:
@@ -81,7 +84,7 @@ def save_index(index):
     with open(INDEX_FILE, "w") as f:
         json.dump(index, f)
 
-# --- PDF Handling ---
+# --- PDF Helpers ---
 def extract_text_and_citations(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
     full_text = "\n".join(p.get_text() for p in doc)
@@ -97,9 +100,12 @@ def extract_references_section(doc):
 
 def get_reference_map_from_llm(reference_text):
     prompt = f"""
-Extract a JSON list of citations from the text below, in the format:
-[{{"tag": "1", "title": "..."}}]
+Extract a JSON list of references from the following text. Each item should contain:
+- tag: citation number
+- title: short title or label
 
+Return format:
+[{{"tag": "1", "title": "ISO 9001 Quality Management"}}, ...]
 Text:
 {reference_text}
 """
@@ -137,7 +143,8 @@ Reference:
 
 Does the reference support the claim?
 
-Reply with one of: Supported / Not Supported / Contradicted / Not Found.
+Respond with one of:
+Supported / Not Supported / Contradicted / Not Found
 """
     return call_openrouter(prompt)
 
@@ -197,7 +204,7 @@ elif page == "⚙️ Manage References":
                 doc = fitz.open(path)
                 summary = doc.metadata.get("title", "") + " " + doc[0].get_text()[:1000]
                 emb = embed_locally(summary)
-                index.append({"file": file, "embedding": emb})
+                index.append({"file": file, "embedding": emb.tolist()})
                 st.success(f"Indexed: {file}")
             except Exception as e:
                 st.warning(f"Could not index {file}: {e}")
