@@ -1,4 +1,5 @@
 streamlit
 PyMuPDF
-scikit-learn
 requests
+sentence-transformers
+scikit-learn
